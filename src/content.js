@@ -46,35 +46,89 @@ const GITHUB_PAGE_PULLS = /github\.com\/(.*)\/(.*)\/pulls/
 const GITHUB_PAGE_COMPARE = /github\.com\/(.*)\/(.*)\/compare\/(.*)/
 
 /////////////////////////////////
-// TEMPLATES
+// SECURITY HELPERS
+/////////////////////////////////
+
+/**
+ * Escapes HTML special characters to prevent XSS when inserting into HTML contexts.
+ */
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
+}
+
+/**
+ * Validates and sanitizes a URL string. Returns empty string if invalid.
+ * Only allows https: and http: protocols.
+ */
+function sanitizeUrl(url) {
+    if (!url || typeof url !== 'string') return '';
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+            return parsed.href;
+        }
+        return '';
+    } catch {
+        return '';
+    }
+}
+
+/////////////////////////////////
+// TEMPLATES (safe DOM construction)
 /////////////////////////////////
 
 function commitStreamEl(href, content) {
     const el = document.createElement('div');
-    el.innerHTML = `
-        <a href="${href}">${content[0]}</a>
-        <a href="${getJiraUrl(content[1])}" target="_blank" alt="Ticket in Jira"><b>${content[1]}</b></a>
-        <a href="${href}">${content[2].trim()}</a>
-    `;
+
+    const safeHref = sanitizeUrl(href) || '#';
+
+    const a1 = document.createElement('a');
+    a1.href = safeHref;
+    a1.textContent = content[0];
+    el.appendChild(a1);
+
+    const a2 = document.createElement('a');
+    a2.href = sanitizeUrl(getJiraUrl(content[1])) || '#';
+    a2.target = '_blank';
+    a2.alt = 'Ticket in Jira';
+    const b = document.createElement('b');
+    b.textContent = content[1];
+    a2.appendChild(b);
+    el.appendChild(a2);
+
+    const a3 = document.createElement('a');
+    a3.href = safeHref;
+    a3.textContent = (content[2] || '').trim();
+    el.appendChild(a3);
+
     return el;
 }
 
 function titleHTMLContent(title, issueKey) {
-    return title.replace(/([A-Z0-9]+-[0-9]+)/, `
-        <a href="${getJiraUrl(issueKey)}" target="_blank" alt="Ticket in Jira">${issueKey}</a>
-    `);
+    const safeIssueKey = escapeHtml(issueKey);
+    const safeUrl = escapeHtml(sanitizeUrl(getJiraUrl(issueKey)));
+    return title.replace(/([A-Z0-9]+-[0-9]+)/, `<a href="${safeUrl}" target="_blank" alt="Ticket in Jira">${safeIssueKey}</a>`);
 }
 
 
 function userHTMLContent(text, user) {
     if (user && typeof user === 'object') {
         const { avatarUrls, displayName } = user
+        const safeDisplayName = escapeHtml(displayName);
+        const safeAvatarUrl = escapeHtml(sanitizeUrl(avatarUrls && avatarUrls['16x16']));
+        const safeText = escapeHtml(text);
         return `
             <div class="d-inline-block">
-                ${text}
+                ${safeText}
                 <span class="author text-bold">
-                    <a class="no-underline"><img style="float:none;margin-right:0" class="avatar avatar-user" src="${avatarUrls['16x16']}" width="20"/></a>
-                    ${displayName}
+                    <a class="no-underline"><img style="float:none;margin-right:0" class="avatar avatar-user" src="${safeAvatarUrl}" width="20"/></a>
+                    ${safeDisplayName}
                 </span>
             </div>
         `
@@ -95,15 +149,20 @@ function statusIconBlock(statusIcon) {
         return ''
     }
 
-    const origin = new URL(statusIcon).origin
-    const base = new URL(origin).href
-
-    // If the icon is the same as its origin, it most probably is not an image
-    if (statusIcon === origin || statusIcon === base) {
+    const safeUrl = sanitizeUrl(statusIcon);
+    if (!safeUrl) {
         return ''
     }
 
-    return `<img height="16" class="octicon" width="12" aria-hidden="true" src="${statusIcon}"/>`
+    const origin = new URL(safeUrl).origin
+    const base = new URL(origin).href
+
+    // If the icon is the same as its origin, it most probably is not an image
+    if (safeUrl === origin || safeUrl === base) {
+        return ''
+    }
+
+    return `<img height="16" class="octicon" width="12" aria-hidden="true" src="${escapeHtml(safeUrl)}"/>`
 }
 
 function statusCategoryColors(statusCategory) {
@@ -126,27 +185,33 @@ function headerBlock(issueKey,
         summary
     } = {}
 ) {
-    const issueUrl = getJiraUrl(issueKey)
+    const issueUrl = sanitizeUrl(getJiraUrl(issueKey));
+    const safeIssueUrl = escapeHtml(issueUrl);
     const statusIconHTML = statusIconBlock(statusIcon)
     const { color: statusColor, background: statusBackground } = statusCategoryColors(statusCategory);
+    const safeStatusName = escapeHtml(statusName);
+    const safeSummary = escapeHtml(summary);
+    const safeIssueKey = escapeHtml(issueKey);
+    const safeStatusColor = escapeHtml(statusColor);
+    const safeStatusBackground = escapeHtml(statusBackground);
     return `
         <div class="TableObject">
             <div class="TableObject-item">
                 <span class="State State--green" style="background-color: rgb(150, 198, 222);">
-                    <img height="16" class="octicon" width="12" aria-hidden="true" src="${jiraLogo}"/>
-                    <a style="color:white;" href="${issueUrl}" target="_blank">Jira</a>
+                    <img height="16" class="octicon" width="12" aria-hidden="true" src="${escapeHtml(jiraLogo)}"/>
+                    <a style="color:white;" href="${safeIssueUrl}" target="_blank">Jira</a>
                 </span>
             </div>
             <div class="TableObject-item">
-                <span class="State State--white" style="color: ${statusColor}; background: ${statusBackground}">
+                <span class="State State--white" style="color: ${safeStatusColor}; background: ${safeStatusBackground}">
                     ${statusIconHTML}
-                    ${statusName}
+                    ${safeStatusName}
                 </span>
             </div>
             <div class="TableObject-item TableObject-item--primary">
                 <strong>
-                    <a href="${issueUrl}" target="_blank">
-                        ${issueKey} - ${summary}
+                    <a href="${safeIssueUrl}" target="_blank">
+                        ${safeIssueKey} - ${safeSummary}
                     </a>
                 </strong>
                 <div class="d-inline-block">

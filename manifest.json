@@ -26,34 +26,35 @@
                 "images/jira.png"
             ],
             "matches": [
-                "*://github.com/*"
+                "https://github.com/*"
             ]
         }
     ],
 
     "content_scripts": [
         {
-            "matches": ["*://github.com/*"],
+            "matches": ["https://github.com/*"],
             "js": ["src/content.js"],
             "run_at": "document_end"
         }
     ],
 
     "permissions": [
-        "activeTab",
         "storage"
     ],
 
     "host_permissions": [
         "https://*.atlassian.net/",
-        "https://*.jira.com/",
-        "http://*.atlassian.net/",
-        "http://*.jira.com/"
+        "https://*.jira.com/"
     ],
 
-    "optional_permissions": [
-        "*://*/*"
+    "optional_host_permissions": [
+        "https://*/*"
     ],
+
+    "content_security_policy": {
+        "extension_pages": "script-src 'self'; object-src 'self'; connect-src https://*.atlassian.net/ https://*.jira.com/"
+    },
 
     "background": {
         "service_worker": "src/background.js",
